@@ -1,0 +1,86 @@
+Practical Machine Learning Project
+========================================================
+
+This is a report that contains explanation of the preprocessing, model fitting and evaluation of a classification problem, in which several explanatory variables are used to predict a way in which weighlifting was performed. The variable that is supposed to be predicted consists of 5 levels: A,B,C,D,E.
+
+The training set provided for the project consisted of 19622 observations and 160 variables (including the variable that is to be predicted by the model). Before exploring the data, they were split into two subsets: training and testing so that percentages of the levels of the variable *classe* were approximately equal for both subsets. The training set consisted of approximately 75% of the original data. The training data were used for preprocessing, variable selection, and model fitting. Estimation of the out of sample error was done on a testing set.
+
+By exploring the training data, it was discovered that the variable *X* codes the row index of it. Therefore this variable was removed in the preprocessing. Apart from it, the variables *user_name*, *raw_timestamp_part_1*, *raw_timestamp_part_2*, *cvtd_timestamp*, and *num_window* were also excluded for a reason that is explained now. These variables are related to subjects that were used in the experiment and time of the experiment, and the model is supposed to be applicable for external samples. Because the external samples may include different users and be recorded on different times, inclusion of these variables in the model fitting could lead to overfitting. Apart from excluding these variables, the variables containing at least 95% of NAs and variables with almost zero variability were excluded. Due to these preprocessing procedures the number of remaining predictors was 52. 
+
+To method chosen for this prediction problem is a random forest model, because it typically leads to very accurate predictions and it does not require the variables to come from a particular distribution. One of the shortcomings of this method is that it can lead to overfitting. However, because the variables like index, user name, etc. were removed before fitting the model, overfitting is not expected to be a big problem here.
+
+The random forest model with 52 predictors was used for our prediction problem. Below the importance of different predictors is given, in which the variables are ordered according to their importance in the random forest model. Additionally, the so-called *out of bag* estimate for the error rate is given, and the confusion matrix on the training data set.
+
+```{r, echo=FALSE}
+setwd("/Users/beatka/Desktop/PhD/practical machine learning")
+
+raw.data=read.csv("pml-training.csv",na.strings = "NA")
+library(caret)
+library(randomForest)
+library(ggplot2)
+
+set.seed(777)
+
+inTrain <- createDataPartition(y=raw.data$classe,
+                               p=0.75, list=FALSE)
+training <- raw.data[inTrain,]
+testing <- raw.data[-inTrain,]
+
+# check percentages of NA values per variable
+percent_NA=colSums(is.na(training))/dim(training)[[1]]
+
+# remove variables for which NAs are =>95%
+NA95=which(percent_NA>=0.95)
+training_pre=training[,-NA95]
+
+# search for variables with near zero variability
+nzv <- nearZeroVar(training_pre,saveMetrics=TRUE)
+# check whether the variable to be predicted does not have a near zero variability
+#nzv$nzv[which(colnames(training_pre)=="classe")]
+# remove variables with near zero variability
+
+training_pre=training_pre[,-which(nzv$nzv)]
+#dim(training_pre)
+
+# remove variables X (it equals the sample index), user_name (to prevent overfitting)
+# raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp (those are related to time of experiment)
+# and num_window
+# the reason is that we don't want to have an overfitting problem
+
+which_vars=which(colnames(training_pre) %in% c("X","user_name","raw_timestamp_part_1",
+                                               "raw_timestamp_part_2","cvtd_timestamp","num_window"))
+
+training_pre=training_pre[,-which_vars]
+
+model.rf <- randomForest(classe ~ ., data=training_pre, importance=TRUE,
+                        proximity=TRUE)
+print(model.rf)
+
+varImpPlot(model.rf)
+
+```
+
+
+We evaluate the prediction model on the testing data set, for which the same predictors are kept as for the preprocessed training data set. The values of classe are predicted based on the random forest model fitted using the training set. The confusion matrix and the estimate of the *out of sample error* are reported.
+
+```{r}
+
+# apply the same preprocessing as was done for the testing set
+v=which(names(testing) %in% (names(training_pre)))
+# exclude the variable classy
+v=v[!v==160]
+testing_pre=testing[,v]
+
+
+predicted=predict(model.rf,newdata=testing_pre)
+
+tab=table(predicted,testing[,160])
+tab
+
+# calculate estimate of the out of sample error rate
+out_of_sample_err=1-sum(diag(tab))/sum(tab)
+out_of_sample_err
+
+```
+
+One can conclude that this random forest model is very accurate, because the estimate of the out of sample error is very low. 
